@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "299645842881",
+    "project_id": "rssi-attendance-system",
+    "storage_bucket": "rssi-attendance-system.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:299645842881:android:4009e73bfe10c78e3b6b40",
+        "android_client_info": {
+          "package_name": "com.example.admin_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBBeB1eI4dY-P1mDxOH6q7AE4qD1FO0BPE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
