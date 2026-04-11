@@ -1,40 +1,85 @@
+// ignore_for_file: avoid_print
+
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 
 import 'package:admin_app/models/transmiter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class DataCollectionPage extends StatefulWidget {
+  final String roomId;
   final List<String> transmitors;
-  const DataCollectionPage({super.key, required this.transmitors});
+  const DataCollectionPage({
+    super.key,
+    required this.roomId,
+    required this.transmitors,
+  });
 
   @override
   State<DataCollectionPage> createState() => _DataCollectionPageState();
 }
 
 class _DataCollectionPageState extends State<DataCollectionPage> {
-  final Map<String, Transmiter> _devicesMap = {};
+  late final Map<String, Transmiter> _deviceDataMap;
+  late final Map<String, int> _deviceIndexMap;
+
   StreamSubscription? _scanSubscription;
-  Timer? _cleanupTimer;
   bool _isScanning = false;
   int readingCount = 0;
+  bool _insideRoom = true;
+
+  Timer? _snapshotTimer;
+  final List<List<int>> _insideData = [];
+  final List<List<int>> _outsideData = [];
 
   @override
   void initState() {
+    _deviceIndexMap = {
+      for (int i = 0; i < widget.transmitors.length; i++)
+        widget.transmitors[i]: i,
+    };
+    _deviceDataMap = {};
+    for (String device in widget.transmitors) {
+      _deviceDataMap[device] = Transmiter(
+        name: device,
+        initialRssi: -100,
+        lastSeen: DateTime.now(),
+      );
+    }
     super.initState();
-    // Periodically remove devices that haven't been seen recently
-    _cleanupTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      _removeOldDevices();
-    });
   }
 
-  void _removeOldDevices() {
-    final now = DateTime.now();
+  void _takeSnapshot() {
+    if (!_isScanning) return;
+
+    List<int> tuple = [];
+    for (String device in widget.transmitors) {
+      int? index = _deviceIndexMap[device];
+      Transmiter? deviceData = _deviceDataMap[device];
+
+      if (index == null || deviceData == null) {
+        tuple.add(-100);
+        continue;
+      }
+
+      if (DateTime.now().difference(deviceData.lastSeen).inSeconds > 5) {
+        tuple.add(-100);
+      } else {
+        tuple.add(deviceData.averageRssi);
+      }
+    }
+
     setState(() {
-      _devicesMap.removeWhere(
-        (id, device) => now.difference(device.lastSeen).inSeconds > 5,
-      ); // 5-second threshold
+      if (_insideRoom) {
+        _insideData.add(tuple);
+      } else {
+        _outsideData.add(tuple);
+      }
     });
   }
 
@@ -42,6 +87,7 @@ class _DataCollectionPageState extends State<DataCollectionPage> {
     if (_isScanning) {
       await FlutterBluePlus.stopScan();
       _scanSubscription?.cancel();
+      _snapshotTimer?.cancel();
       setState(() => _isScanning = false);
       return;
     }
@@ -52,42 +98,124 @@ class _DataCollectionPageState extends State<DataCollectionPage> {
       Permission.location,
     ].request();
 
+    await FlutterBluePlus.turnOn();
+
     setState(() => _isScanning = true);
 
-    await FlutterBluePlus.startScan(continuousUpdates: true);
+    _snapshotTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _takeSnapshot();
+    });
 
-    _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-      readingCount++;
+    await FlutterBluePlus.startScan(
+      continuousUpdates: true,
+      // oneByOne: true,
+      androidScanMode: AndroidScanMode.lowLatency,
+    );
+
+    print(_insideRoom ? "Inside Room:" : "Outside Room:");
+
+    _scanSubscription = FlutterBluePlus.onScanResults.listen((results) {
+      readingCount += results.length;
+      // print(results.length);
       for (ScanResult r in results) {
-        final id = r.device.remoteId.str;
+        // final id = r.device.remoteId.str;
         final name = r.device.platformName.isEmpty
-            ? "Unknown Device"
+            ? "Unknown"
             : r.device.platformName;
 
+        // print(name);
+        if (widget.transmitors.isNotEmpty &&
+            !widget.transmitors.contains(name)) {
+          return;
+        }
+        final rssi = r.rssi;
+        // print('$_deviceIndexMap[name]: $rssi');
         setState(() {
-          if (widget.transmitors.isNotEmpty &&
-              !widget.transmitors.contains(id)) {
-            return;
-          }
-          if (_devicesMap.containsKey(id)) {
-            _devicesMap[id]!.addReading(r.rssi);
-          } else {
-            _devicesMap[id] = Transmiter(
-              id: id,
-              name: name,
-              initialRssi: r.rssi,
-              lastSeen: DateTime.now(),
-            );
-          }
+          _deviceDataMap[name]!.addReading(rssi);
         });
       }
     });
   }
 
+  Future<void> _exportData() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                "Please don't close the app...\nSending data to server",
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // ------------------ 1. PREPARE JSON ------------------
+      final payload = {"inside": _insideData, "outside": _outsideData};
+
+      // ------------------ 2. SEND TO MODEL SERVER ------------------
+      final response = await http.post(
+        Uri.parse(
+          "https://falcon-sweet-physically.ngrok-free.app/train/${widget.roomId}",
+        ),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception("Model server failed: ${response.body}");
+      }
+
+      // ------------------ 3. PREPARE DEVICE LIST ------------------
+      final devices = widget.transmitors.map((id) {
+        return {
+          "id": id,
+          "name": id, // you can customize later
+        };
+      }).toList();
+
+      final firestore = FirebaseFirestore.instance;
+
+      // ------------------ 4. STORE DEVICES COLLECTION ------------------
+      for (var device in devices) {
+        await firestore.collection("devices").doc(device["id"]).set(device);
+      }
+
+      // ------------------ 5. UPDATE ROOM DOCUMENT ------------------
+      await firestore.collection("rooms").doc(widget.roomId).set({
+        "devices": widget.transmitors,
+        "configured": true,
+        "configured_at": FieldValue.serverTimestamp(),
+        "training_data": jsonEncode(payload),
+      }, SetOptions(merge: true));
+
+      // ------------------ SUCCESS ------------------
+      Navigator.pop(context); // close dialog
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Data sent & model trained successfully ✅"),
+        ),
+      );
+    } catch (e) {
+      Navigator.pop(context); // close dialog
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Sort devices by signal strength (strongest first)
-    final sortedDevices = _devicesMap.values.toList();
+    final sortedDevices = _deviceDataMap.values.toList();
     // ..sort((a, b) => b.averageRssi.compareTo(a.averageRssi));
 
     return Scaffold(
@@ -139,6 +267,44 @@ class _DataCollectionPageState extends State<DataCollectionPage> {
               ),
             ),
           ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: ToggleButtons(
+              isSelected: [_insideRoom, !_insideRoom],
+              onPressed: (index) {
+                setState(() {
+                  _insideRoom = index == 0;
+                });
+              },
+              children: const [
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text("Inside Room"),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text("Outside Room"),
+                ),
+              ],
+            ),
+          ),
+          // Add this inside your Column in build()
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Text(
+                  "Tuples Collected: Inside: ${_insideData.length} | Outside: ${_outsideData.length}",
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: _exportData,
+                  child: const Text("Export CSV to Console"),
+                ),
+              ],
+            ),
+          ),
+
           Expanded(
             child: ListView.builder(
               itemCount: sortedDevices.length,
@@ -150,26 +316,17 @@ class _DataCollectionPageState extends State<DataCollectionPage> {
                     child: const Icon(Icons.bluetooth, color: Colors.white),
                   ),
                   title: Text(
-                    device.id,
+                    device.name,
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: Text(device.name),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        device.averageRssi.toString(),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: _getRssiColor(device.averageRssi),
-                        ),
-                      ),
-                      const Text(
-                        "Live",
-                        style: TextStyle(fontSize: 10, color: Colors.grey),
-                      ),
-                    ],
+                  subtitle: Text(device.id ?? 'Unknown'),
+                  trailing: Text(
+                    device.averageRssi.toString(),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: _getRssiColor(device.averageRssi),
+                    ),
                   ),
                 );
               },
@@ -188,7 +345,7 @@ class _DataCollectionPageState extends State<DataCollectionPage> {
 
   @override
   void dispose() {
-    _cleanupTimer?.cancel();
+    // _cleanupTimer?.cancel();
     _scanSubscription?.cancel();
     super.dispose();
   }

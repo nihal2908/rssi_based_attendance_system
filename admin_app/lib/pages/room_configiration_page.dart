@@ -33,9 +33,7 @@ class _RoomConfigurationPageState extends State<RoomConfigurationPage> {
                 ...macControllers.map(
                   (controller) => TextFormField(
                     controller: controller,
-                    decoration: const InputDecoration(
-                      labelText: 'MAC Address / BSSID',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Device name'),
                   ),
                 ),
                 SizedBox(height: 20),
@@ -45,6 +43,7 @@ class _RoomConfigurationPageState extends State<RoomConfigurationPage> {
                       context,
                       MaterialPageRoute(
                         builder: (context) => DataCollectionPage(
+                          roomId: widget.roomId,
                           transmitors: macControllers
                               .map((c) => c.text.trim())
                               .where((t) => t.isNotEmpty)
