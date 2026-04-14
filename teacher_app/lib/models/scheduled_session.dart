@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:student_app/models/classroom.dart';
+
+import 'classroom.dart';
 
 class ScheduledSession {
   String id;
@@ -8,6 +9,7 @@ class ScheduledSession {
   int startMin;
   int endHour;
   int endMin;
+  String classroomId;
   String classroomName;
   Classroom? classroom;
 
@@ -18,6 +20,7 @@ class ScheduledSession {
     required this.endHour,
     required this.endMin,
     required this.weekday,
+    required this.classroomId,
     required this.classroomName,
     this.classroom,
   });
@@ -50,6 +53,7 @@ class ScheduledSession {
       startMin: int.parse(json['start_min'] ?? '0'),
       endMin: int.parse(json['end_hour'] ?? '0'),
       weekday: int.parse(json['end_min'] ?? '0'),
+      classroomId: json['classroom_id'] ?? '',
       classroomName: json['classroom_name'] ?? '',
     );
   }
@@ -62,6 +66,7 @@ class ScheduledSession {
       'start_min': startMin,
       'end_min': endMin,
       'weekday': weekday,
+      'classroom_id': classroomId,
       'classroom_name': classroomName,
     };
   }
@@ -75,6 +80,7 @@ class ScheduledSession {
       startMin: data['start_min'] ?? 0,
       endMin: data['end_min'] ?? 0,
       weekday: data['weekday'] ?? 0,
+      classroomId: data['classroom_id'] ?? '',
       classroomName: data['classroom_name'] ?? '',
     );
   }

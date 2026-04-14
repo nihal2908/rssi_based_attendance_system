@@ -5,44 +5,50 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../dependency_injection.dart';
+import '../models/teacher.dart';
 import '../services/auth_service.dart';
 
 class AuthController extends ChangeNotifier {
-  AuthController() {
-    _authService = sl<AuthService>();
-    _user = _authService.getCurrentUser();
-  }
-
-  late final AuthService _authService;
+  final AuthService _authService;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   User? _user;
+  Teacher? _currentUser;
   bool _isLoading = false;
   String? _errorMessage;
 
   User? get user => _user;
+  Teacher? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isAuthenticated => _user != null;
+
+  AuthController() : _authService = sl<AuthService>() {
+    _authService.authStateChanges().listen((User? newUser) {
+      _user = newUser;
+      if (newUser == null) {
+        _currentUser = null;
+      }
+      notifyListeners();
+    });
+  }
 
   Future<bool> register({
     required String name,
     required String email,
     required String password,
   }) async {
-    print('called register');
     _setLoading(true);
-    _clearError();
+    clearError();
     try {
       await _authService.register(name, email, password);
+      _user = _authService.getCurrentUser();
       return true;
     } on FirebaseAuthException catch (e) {
-      _errorMessage = e.message ?? 'Failed to sign in.';
-      notifyListeners();
+      _errorMessage = e.message ?? 'Registration failed.';
       return false;
-    } catch (_) {
-      _errorMessage = 'Failed to sign in.';
-      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'An unexpected error occurred.';
       return false;
     } finally {
       _setLoading(false);
@@ -50,62 +56,57 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<bool> login({required String email, required String password}) async {
-    print('called login');
     _setLoading(true);
-    _clearError();
+    clearError();
     try {
       await _authService.login(email, password);
+      _user = _authService.getCurrentUser();
       return true;
     } on FirebaseAuthException catch (e) {
-      _errorMessage = e.message ?? 'Failed to sign in.';
-      notifyListeners();
+      _errorMessage = e.message ?? 'Login failed.';
       return false;
-    } catch (_) {
-      _errorMessage = 'Failed to sign in.';
-      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'An unexpected error occurred.';
       return false;
     } finally {
       _setLoading(false);
     }
   }
 
-  Future<Map<String, dynamic>> fetchUserData() async {
+  Future<void> fetchUserData() async {
+    if (_user == null || _currentUser != null) return;
+
+    _setLoading(true);
     try {
-      _user = _authService.getCurrentUser();
       final snapshot = await _firestore
           .collection('teachers')
           .doc(_user!.uid)
           .get();
-      return snapshot.data() ?? {};
-      // notifyListeners();
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = e.message ?? 'Failed to fetch user data.';
-      return {};
-    } catch (_) {
+
+      if (snapshot.exists) {
+        _currentUser = Teacher.fromFirestore(snapshot);
+      } else {
+        _errorMessage = "Student profile not found.";
+      }
+    } catch (e) {
       _errorMessage = 'Failed to fetch user data.';
-      return {};
+    } finally {
+      _setLoading(false);
     }
   }
 
   Future<void> logout() async {
     _setLoading(true);
-    _clearError();
+    clearError();
     try {
       await _authService.logout();
-    } on FirebaseAuthException catch (e) {
-      _errorMessage = e.message ?? 'Failed to sign out.';
-      notifyListeners();
-    } catch (_) {
+      _user = null;
+      _currentUser = null;
+    } catch (e) {
       _errorMessage = 'Failed to sign out.';
-      notifyListeners();
     } finally {
       _setLoading(false);
     }
-  }
-
-  void clearError() {
-    _clearError();
-    notifyListeners();
   }
 
   void _setLoading(bool value) {
@@ -113,7 +114,7 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _clearError() {
+  void clearError() {
     _errorMessage = null;
   }
 }

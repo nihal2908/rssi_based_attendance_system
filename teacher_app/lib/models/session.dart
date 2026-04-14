@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:student_app/models/classroom.dart';
 
+import 'classroom.dart';
 import 'student.dart';
 import 'teacher.dart';
 

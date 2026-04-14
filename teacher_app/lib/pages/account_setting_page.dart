@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:student_app/controllers/auth_controller.dart';
-import 'package:student_app/pages/login_page.dart';
 
+import '../controllers/auth_controller.dart';
 import '../dependency_injection.dart';
+import 'login_page.dart';
 
 class AccountSettingPage extends StatefulWidget {
   const AccountSettingPage({super.key});
@@ -139,16 +139,6 @@ class _AccountSettingPageState extends State<AccountSettingPage> {
             ),
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(
-                    Icons.face_retouching_natural,
-                    color: Colors.blue,
-                  ),
-                  title: const Text("Request Face ID Configuration"),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => authController.generateFaceIDRequest(),
-                ),
-                const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.logout, color: Colors.redAccent),
                   title: const Text(

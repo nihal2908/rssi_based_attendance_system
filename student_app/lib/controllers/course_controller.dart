@@ -1,11 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../dependency_injection.dart';
+import '../models/classroom.dart';
 import '../models/course.dart';
 import '../models/scheduled_session.dart';
 import '../models/session.dart';
 import '../models/student.dart';
 import '../models/teacher.dart';
+import 'auth_controller.dart';
 
 class CourseController extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -20,10 +23,22 @@ class CourseController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Session? _currentSession;
+  Session? get currentSession => _currentSession;
+  set currentSession(Session? session) {
+    _currentSession = session;
+    notifyListeners();
+  }
+
   bool _isLoading = false;
   String? _errorMessage;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
 
   Future<void> fetchCourses() async {
     try {
@@ -31,8 +46,43 @@ class CourseController extends ChangeNotifier {
       _errorMessage = null;
       notifyListeners();
 
-      final snapshot = await _firestore.collection('courses').get();
-      _courses = snapshot.docs.map((doc) => Course.fromFirestore(doc)).toList();
+      final authController = sl<AuthController>();
+      final userId = authController.user?.uid;
+      if (userId == null) {
+        _errorMessage = 'User not logged in';
+        notifyListeners();
+        return;
+      }
+
+      final userDataSnapshot = await _firestore
+          .collection('students')
+          .doc(userId)
+          .get();
+      if (!userDataSnapshot.exists) {
+        _errorMessage = 'User data not found';
+        notifyListeners();
+        return;
+      }
+
+      final enrolledCourseIds = List<String>.from(
+        userDataSnapshot['courses_enrolled'] ?? [],
+      );
+      // print(enrolledCourseIds);
+      if (enrolledCourseIds.isEmpty) {
+        _courses = [];
+        notifyListeners();
+        return;
+      }
+
+      final courseSnapshots = await Future.wait(
+        enrolledCourseIds.map(
+          (id) => _firestore.collection('courses').doc(id).get(),
+        ),
+      );
+
+      _courses = courseSnapshots
+          .map((doc) => Course.fromFirestore(doc))
+          .toList();
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to fetch courses: $e';
@@ -43,33 +93,40 @@ class CourseController extends ChangeNotifier {
     }
   }
 
-  Future<void> joinCourse(String code) async {
+  Future<bool> joinCourse(String code) async {
     try {
       _isLoading = true;
       _errorMessage = null;
       notifyListeners();
 
-      return _firestore
+      final snapshot = await _firestore
           .collection('courses')
           .where('code', isEqualTo: code)
-          .get()
-          .then((snapshot) async {
-            if (snapshot.docs.isEmpty) {
-              _errorMessage = 'Course not found';
-              notifyListeners();
-              return Future.error('Course not found');
-            }
+          .limit(1)
+          .get();
 
-            final course = Course.fromFirestore(snapshot.docs.first);
-            await _firestore
-                .collection('course_enrollements')
-                .doc(course.id)
-                .update({'students_enrolled': FieldValue.arrayUnion([])});
-            notifyListeners();
-          });
+      if (snapshot.docs.isEmpty) {
+        _errorMessage = 'Course not found';
+        return false;
+      }
+
+      final AuthController authController = sl<AuthController>();
+      final userId = authController.user?.uid;
+      if (userId == null) {
+        _errorMessage = 'User not logged in';
+        return false;
+      }
+
+      final courseId = snapshot.docs.first.id;
+
+      await _firestore.collection('course_enrollements').doc(courseId).update({
+        'students_enrolled': FieldValue.arrayUnion([userId]),
+      });
+
+      return true;
     } catch (e) {
-      _errorMessage = 'Failed to join course: $e';
-      notifyListeners();
+      _errorMessage = 'Failed to join course: ${e.toString()}';
+      return false;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -133,19 +190,28 @@ class CourseController extends ChangeNotifier {
       }
 
       final teacherIds = List<String>.from(courseDoc['teachers'] ?? []);
-      final studentIds = List<String>.from(courseDoc['students_enrolled'] ?? []);
-
       final teachers = await Future.wait(
         teacherIds.map((id) => _firestore.collection('teachers').doc(id).get()),
       );
-      final students = await Future.wait(
-        studentIds.map((id) => _firestore.collection('students').doc(id).get()),
-      );
-
       _currentCourse!.teachers = teachers
           .where((doc) => doc.exists)
           .map((doc) => Teacher.fromFirestore(doc))
           .toList();
+
+      final studentIds = List<String>.from(
+        await _firestore
+            .collection('course_enrollements')
+            .doc(courseId)
+            .get()
+            .then(
+              (doc) => doc.exists
+                  ? List<String>.from(doc['students_enrolled'] ?? [])
+                  : [],
+            ),
+      );
+      final students = await Future.wait(
+        studentIds.map((id) => _firestore.collection('students').doc(id).get()),
+      );
       _currentCourse!.studentsEnrolled = students
           .where((doc) => doc.exists)
           .map((doc) => Student.fromFirestore(doc))
@@ -179,19 +245,84 @@ class CourseController extends ChangeNotifier {
         return;
       }
 
-      final scheduleIds = List<String>.from(courseDoc['scheduled_sessions'] ?? []);
+      final scheduleIds = List<String>.from(
+        courseDoc['scheduled_sessions'] ?? [],
+      );
       final schedules = await Future.wait(
-        scheduleIds.map((id) => _firestore.collection('scheduled_sessions').doc(id).get()),
+        scheduleIds.map(
+          (id) => _firestore.collection('scheduled_sessions').doc(id).get(),
+        ),
       );
 
-      _currentCourse!.scheduledSessions = schedules
-          .where((doc) => doc.exists)
-          .map((doc) => ScheduledSession.fromFirestore(doc))
-          .toList();
+      _currentCourse!.scheduledSessions =
+          schedules
+              .where((doc) => doc.exists)
+              .map((doc) => ScheduledSession.fromFirestore(doc))
+              .toList()
+            ..sort((a, b) {
+              int dayCompare = a.weekday.compareTo(b.weekday);
+              if (dayCompare == 0) {
+                return a.startHour.compareTo(b.startHour);
+              }
+              return dayCompare;
+            });
 
       notifyListeners();
     } catch (e) {
       _errorMessage = 'Failed to fetch course schedule: $e';
+      notifyListeners();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchSessionDetails(String id) async {
+    if (_currentCourse == null) return Future.error('No course selected');
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      final sessionData =
+          (await _firestore.collection('sessions').doc(id).get()).data();
+      if (sessionData == null) {
+        _errorMessage = 'Session not found';
+        notifyListeners();
+        return;
+      }
+
+      final teacherId = sessionData['teacher_id'];
+      final attendeeIds = List<String>.from(sessionData['attendees'] ?? []);
+      final classroomId = sessionData['classroom_id'];
+
+      _currentSession!.teacher = await _firestore
+          .collection('teachers')
+          .doc(teacherId)
+          .get()
+          .then((doc) => doc.exists ? Teacher.fromFirestore(doc) : null);
+
+      _currentSession!.attendees =
+          await Future.wait(
+            attendeeIds.map(
+              (id) => _firestore.collection('students').doc(id).get(),
+            ),
+          ).then(
+            (docs) => docs
+                .where((doc) => doc.exists)
+                .map((doc) => Student.fromFirestore(doc))
+                .toList(),
+          );
+
+      _currentSession!.classroom = await _firestore
+          .collection('classrooms')
+          .doc(classroomId)
+          .get()
+          .then((doc) => doc.exists ? Classroom.fromFirestore(doc) : null);
+
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Failed to fetch session details: $e';
       notifyListeners();
     } finally {
       _isLoading = false;

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../controllers/course_controller.dart';
+import '../controllers/teacher_course_controller.dart';
 import '../dependency_injection.dart';
 
 class JoinCoursePage extends StatefulWidget {
@@ -12,7 +12,8 @@ class JoinCoursePage extends StatefulWidget {
 
 class _JoinCoursePageState extends State<JoinCoursePage> {
   final TextEditingController _courseCodeController = TextEditingController();
-  final CourseController courseController = sl<CourseController>();
+  final TeacherCourseController courseController =
+      sl<TeacherCourseController>();
 
   @override
   void dispose() {
@@ -73,6 +74,7 @@ class _JoinCoursePageState extends State<JoinCoursePage> {
                         ? null
                         : () => _handleJoin(context),
                     style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -81,7 +83,7 @@ class _JoinCoursePageState extends State<JoinCoursePage> {
                     child: courseController.isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
                         : const Text(
-                            'Join Course',
+                            'JOIN COURSE',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -121,7 +123,7 @@ class _JoinCoursePageState extends State<JoinCoursePage> {
       return;
     }
 
-    final success = await courseController.joinCourse(code);
+    final success = await courseController.joinCourse(code: code);
 
     if (success && context.mounted) {
       // Show a success message and go back
@@ -131,6 +133,8 @@ class _JoinCoursePageState extends State<JoinCoursePage> {
           content: Text("Successfully joined course!"),
         ),
       );
+      await Future.delayed(const Duration(seconds: 1));
+      courseController.fetchAssignedCourses();
       Navigator.pop(context);
     }
   }

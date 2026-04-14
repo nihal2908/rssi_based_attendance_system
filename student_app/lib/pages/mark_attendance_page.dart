@@ -29,12 +29,26 @@ class _MarkAttendancePageState extends State<MarkAttendancePage> {
   bool isScanning = false;
   String result = "Not checked";
 
+  bool _isModelReady = false;
+
   @override
   void initState() {
     super.initState();
     for (var t in widget.transmitors) {
       rssiMap[t] = [];
     }
+    _checkModelRequirement();
+  }
+
+  Future<void> _checkModelRequirement() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File("${dir.path}/models/${widget.roomId}.tflite");
+    setState(() {
+      _isModelReady = file.existsSync();
+      if (!_isModelReady) {
+        result = "Model not found. Please download in Room Details.";
+      }
+    });
   }
 
   // ------------------ START SCAN ------------------
@@ -156,9 +170,19 @@ class _MarkAttendancePageState extends State<MarkAttendancePage> {
 
           const SizedBox(height: 20),
 
+          // Inside build method of MarkAttendancePage
+          if (isScanning)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 40, vertical: 10),
+              child: LinearProgressIndicator(),
+            ),
+
           ElevatedButton(
-            onPressed: isScanning ? null : startScan,
-            child: const Text("Check Attendance"),
+            // Disable if scanning OR if model isn't downloaded yet
+            onPressed: (isScanning || !_isModelReady) ? null : startScan,
+            child: Text(
+              isScanning ? "Scanning Beacons..." : "Check My Location",
+            ),
           ),
 
           const SizedBox(height: 20),

@@ -28,8 +28,8 @@ class AuthService {
         email: email,
         password: password,
       );
-      final _firestore = FirebaseFirestore.instance;
-      await _firestore
+      final firestore = FirebaseFirestore.instance;
+      await firestore
           .collection('students')
           .doc(userCredential.user!.uid)
           .set({
@@ -62,5 +62,10 @@ class AuthService {
   // Get current user
   User? getCurrentUser() {
     return _firebaseAuth.currentUser;
+  }
+
+  // Listen to auth state changes
+  Stream<User?> authStateChanges() {
+    return _firebaseAuth.authStateChanges();
   }
 }
