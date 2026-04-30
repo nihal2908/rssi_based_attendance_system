@@ -36,44 +36,52 @@ class _CourseMembersListState extends State<CourseMembersList> {
         if (courseController.isLoading) {
           return Center(child: CircularProgressIndicator());
         }
-        if (courseController.errorMessage != null) {
-          return Center(child: Text(courseController.errorMessage!));
-        }
+        
         final course = courseController.currentCourse;
-        if (course == null) {
-          return Center(
-            child: Text('There was an error loading course details'),
-          );
-        }
-        final int totalItems =
-            1 + course.teachers!.length + 1 + course.studentsEnrolled!.length;
+        final int totalItems = course != null
+            ? 1 + course.teachers!.length + 1 + course.studentsEnrolled!.length
+            : 2;
 
-        return ListView.builder(
-          itemCount: totalItems,
-          itemBuilder: (context, index) {
-            // 1. Teacher Header
-            if (index == 0) {
-              return _buildHeader("Teachers (${course.teachers!.length})");
-            }
+        return RefreshIndicator(
+          onRefresh: () => courseController.getCourseSessions(),
+          child: courseController.errorMessage != null || course == null
+              ? Center(
+                  child: Text(
+                    courseController.errorMessage ??
+                        "There was an error loading course details",
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: totalItems,
+                  itemBuilder: (context, index) {
+                    // 1. Teacher Header
+                    if (index == 0) {
+                      return _buildHeader(
+                        "Teachers (${course.teachers!.length})",
+                      );
+                    }
 
-            // 2. Teacher List
-            if (index <= course.teachers!.length) {
-              return _buildMemberTile(teacher: course.teachers![index - 1]);
-            }
+                    // 2. Teacher List
+                    if (index <= course.teachers!.length) {
+                      return _buildMemberTile(
+                        teacher: course.teachers![index - 1],
+                      );
+                    }
 
-            // 3. Student Header
-            if (index == course.teachers!.length + 1) {
-              return _buildHeader(
-                "Students (${course.studentsEnrolled!.length})",
-              );
-            }
+                    // 3. Student Header
+                    if (index == course.teachers!.length + 1) {
+                      return _buildHeader(
+                        "Students (${course.studentsEnrolled!.length})",
+                      );
+                    }
 
-            // 4. Student List
-            final studentIndex = index - (course.teachers!.length + 2);
-            return _buildMemberTile(
-              student: course.studentsEnrolled![studentIndex],
-            );
-          },
+                    // 4. Student List
+                    final studentIndex = index - (course.teachers!.length + 2);
+                    return _buildMemberTile(
+                      student: course.studentsEnrolled![studentIndex],
+                    );
+                  },
+                ),
         );
       },
     );

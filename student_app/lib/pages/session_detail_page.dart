@@ -40,19 +40,28 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: courseController,
+      listenable: Listenable.merge([
+        courseController,
+        courseController.sessionChangeNotifier,
+      ]),
       builder: (_, _) {
+        if (courseController.isLoading) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (courseController.errorMessage != null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Session Details")),
+            body: Center(child: Text(courseController.errorMessage!)),
+          );
+        }
         final List<Widget> children = [_buildInfoTab(), _buildAttendeeTab()];
 
         return Scaffold(
-          appBar: AppBar(
-            title: Text(session.name),
-            actions: [
-              IconButton(icon: const Icon(Icons.share), onPressed: () {}),
-            ],
-          ),
+          appBar: AppBar(title: Text(session.name)),
           body: children[_currentIndex],
-          floatingActionButton: _currentIndex == 0 && session.attendanceOpen
+          floatingActionButton: session.attendanceOpen
               ? FloatingActionButton.extended(
                   onPressed: () => _navigateToAttendance(context),
                   label: const Text("Mark Attendance"),
@@ -82,10 +91,17 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       children: [
         // Time Card using your custom getters
         Card(
+          color: session.attendanceOpen ? Colors.green[100] : null,
           child: ListTile(
             leading: const Icon(Icons.access_time_filled, color: Colors.blue),
             title: const Text("Schedule"),
             subtitle: Text(session.formattedTimeRange),
+            trailing: session.attendanceOpen
+                ? const Badge(
+                    label: Text("LIVE"),
+                    backgroundColor: Colors.green,
+                  )
+                : null,
           ),
         ),
 
@@ -153,27 +169,112 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
   }
 
   Widget _buildAttendeeTab() {
-    final attendees = session.attendees ?? [];
+    final allEnrolled = courseController.currentCourse?.studentsEnrolled ?? [];
+    final attendeeIds =
+        session.attendees?.map((e) => e.id).toSet() ??
+        {}; // Using a Set for O(1) lookup
 
-    if (attendees.isEmpty) {
-      return const Center(child: Text("No attendees found or loading..."));
+    if (allEnrolled.isEmpty) {
+      return const Center(
+        child: Text('No student is enrolled in this course.'),
+      );
     }
 
-    return ListView.builder(
-      itemCount: attendees.length,
-      itemBuilder: (context, index) {
-        final student = attendees[index];
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundImage: student.avatar != null
-                ? NetworkImage(student.avatar!)
-                : null,
-            child: student.avatar == null ? const Icon(Icons.person) : null,
+    // 1. Split into Present and Absent groups
+    final presentStudents = allEnrolled
+        .where((s) => attendeeIds.contains(s.id))
+        .toList();
+    final absentStudents = allEnrolled
+        .where((s) => !attendeeIds.contains(s.id))
+        .toList();
+
+    // 2. Sort both lists by name
+    presentStudents.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
+    absentStudents.sort(
+      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+    );
+
+    // 3. Combine them: Present first, then Absent
+    final sortedList = [...presentStudents, ...absentStudents];
+
+    return Column(
+      children: [
+        // Summary Header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          color: Colors.blueGrey[50],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildSummaryText(
+                "Present",
+                presentStudents.length,
+                Colors.green,
+              ),
+              _buildSummaryText(
+                "Absent",
+                absentStudents.length,
+                Colors.blueGrey,
+              ),
+              _buildSummaryText(
+                "Enrolled",
+                allEnrolled.length,
+                Colors.blueGrey,
+              ),
+            ],
           ),
-          title: Text(student.name),
-          subtitle: Text("Reg: ${student.registrationNo}"),
-        );
-      },
+        ),
+
+        // Sorted List
+        Expanded(
+          child: ListView.builder(
+            itemCount: sortedList.length,
+            itemBuilder: (context, index) {
+              final student = sortedList[index];
+              final isPresent = attendeeIds.contains(student.id);
+
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: student.avatar != null
+                      ? NetworkImage(student.avatar!)
+                      : null,
+                  child: student.avatar == null
+                      ? const Icon(Icons.person)
+                      : null,
+                ),
+                title: Text(student.name),
+                subtitle: Text("Reg: ${student.registrationNo}"),
+                trailing: isPresent
+                    ? const Icon(Icons.check_circle, color: Colors.green)
+                    : null,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Helper widget for the header
+  Widget _buildSummaryText(String label, int count, Color color) {
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(fontSize: 16, color: Colors.black87),
+        children: [
+          TextSpan(text: "$label: "),
+          TextSpan(
+            text: "$count",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: color,
+              fontSize: 18,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -196,20 +297,21 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       );
       return;
     }
-    
-    final didMarkAttendance = await Navigator.push<bool>(
-    context,
-    MaterialPageRoute(
-      builder: (context) => AttendanceActionPage(classroom: session.classroom!),
-    ),
-  );
 
-  if (didMarkAttendance == true && mounted) {
-    // Refresh the session details to show the new attendee
-    courseController.fetchSessionDetails(session.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Attendance marked successfully!")),
+    final didMarkAttendance = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            AttendanceActionPage(classroom: session.classroom!, sessionId: session.id),
+      ),
     );
-  }
+
+    if (didMarkAttendance == true && mounted) {
+      // Refresh the session details to show the new attendee
+      // courseController.fetchSessionDetails(session.id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Attendance marked successfully!")),
+      );
+    }
   }
 }

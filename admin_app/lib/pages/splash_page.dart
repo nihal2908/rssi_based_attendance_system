@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../controllers/auth_controller.dart';
+import '../dependency_injection.dart';
 import 'dashboard_page.dart';
 import 'login_page.dart';
 
@@ -12,31 +13,30 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  final AuthController _authController = sl<AuthController>();
+
   @override
   void initState() {
-    _checkAuthentication();
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndNavigate();
+    });
   }
 
-  Future<void> _checkAuthentication() async {
-    final controller = await AuthController();
+  Future<void> _checkAndNavigate() async {
+    if (!mounted) return;
 
-    final isUser = controller.user != null;
-    if (isUser) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const DashboardPage()),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginPage()),
-      );
-    }
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => _authController.isAuthenticated
+            ? const DashboardPage()
+            : const LoginPage(),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(body: Center(child: CircularProgressIndicator()));
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }

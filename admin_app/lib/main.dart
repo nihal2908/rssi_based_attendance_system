@@ -1,9 +1,9 @@
-import 'package:admin_app/dependency_injection.dart';
-import 'package:admin_app/pages/splash_page.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import 'dependency_injection.dart';
 import 'firebase_options.dart';
+import 'pages/splash_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,7 +18,7 @@ class AdminApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Admin App',
+      title: 'Attend: Admin',
       theme: ThemeData(primarySwatch: Colors.blue),
       home: SplashScreen(),
       debugShowCheckedModeBanner: false,

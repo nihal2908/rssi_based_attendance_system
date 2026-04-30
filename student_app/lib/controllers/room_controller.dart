@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart' as path;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
+import '../dependency_injection.dart';
 import '../models/classroom.dart';
+import 'auth_controller.dart';
 
 class RoomController extends ChangeNotifier {
   Classroom? _currentRoom;
@@ -74,7 +77,7 @@ class RoomController extends ChangeNotifier {
 
   // --- ATTENDANCE LOGIC (BLE + ML) ---
 
-  Future<void> startAttendanceVerification() async {
+  Future<void> startAttendanceVerification(String sessionId) async {
     if (_currentRoom == null) return;
 
     // Request Permissions
@@ -99,6 +102,7 @@ class RoomController extends ChangeNotifier {
       for (var r in results) {
         final name = r.device.platformName;
         if (_currentRoom!.devices.contains(name)) {
+          print(r.toString());
           _rssiMap[name]?.add(r.rssi);
         }
       }
@@ -107,7 +111,7 @@ class RoomController extends ChangeNotifier {
     // Scan for 5 seconds then process
     _timer = Timer(const Duration(seconds: 5), () async {
       await _stopScan();
-      await _runInference();
+      await _runInference(sessionId);
     });
   }
 
@@ -119,7 +123,7 @@ class RoomController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _runInference() async {
+  Future<void> _runInference(String sessionId) async {
     _updateStatus("Analyzing location...");
     try {
       final directory = await path.getApplicationDocumentsDirectory();
@@ -127,26 +131,49 @@ class RoomController extends ChangeNotifier {
 
       final interpreter = Interpreter.fromFile(File(pathStr));
 
-      // Prepare Input (Mean RSSI)
-      List<int> inputVector = [];
+      // 1. Prepare Input (Mean RSSI)
+      // IMPORTANT: Use double to allow for division
+      List<double> normalizedVector = [];
+
       for (var device in _currentRoom!.devices) {
         final readings = _rssiMap[device] ?? [];
-        int mean = readings.isEmpty
-            ? -100
-            : readings.reduce((a, b) => a + b) ~/ readings.length;
-        inputVector.add(mean);
+        double mean = readings.isEmpty
+            ? 100.0
+            : readings.reduce((a, b) => a + b).abs() / readings.length;
+
+        // 2. MATCH THE TRAINING PREPROCESSING: Divide by 100
+        normalizedVector.add(mean / 100.0);
       }
 
-      final input = [inputVector];
+      // 3. Ensure the input is a Float32 list
+      final input = [normalizedVector]; // Shape [1, input_dim]
       final output = List.filled(1, 0.0).reshape([1, 1]);
 
       interpreter.run(input, output);
       double score = output[0][0];
       interpreter.close();
 
-      _updateStatus(score > 0.8 ? "SUCCESS" : "OUTSIDE_ZONE");
+      print("Model Score: $score");
+
+      _updateDB(sessionId, true);
+
+      _updateStatus(score > 0.5 ? "SUCCESS" : "OUTSIDE_ZONE");
     } catch (e) {
       _updateStatus("Error: $e");
+      print("Inference Error: $e");
+    }
+  }
+
+  Future<void> _updateDB(String sessionId, bool isPresent) async {
+    final FirebaseFirestore firestore = FirebaseFirestore.instance;
+    final AuthController authController = sl<AuthController>();
+
+    try {
+      await firestore.collection("sessions").doc(sessionId).update({
+        "attendees": FieldValue.arrayUnion([authController.user!.uid]),
+      });
+    } catch (e) {
+      print("DB Update Error: $e");
     }
   }
 }

@@ -5,15 +5,6 @@ import tensorflow as tf
 import os
 import time
 
-import firebase_admin
-from firebase_admin import credentials, firestore
-
-# ------------------ Firebase Init ------------------
-cred = credentials.Certificate("serviceAccountKey.json")
-firebase_admin.initialize_app(cred)
-
-db = firestore.client()
-
 # ------------------ FastAPI Init ------------------
 app = FastAPI()
 
@@ -83,13 +74,6 @@ async def train_model(classroom_id: str, request: Request):
 
     with open(model_path, "wb") as f:
         f.write(tflite_model)
-
-    # ------------------ UPDATE FIRESTORE ------------------
-    db.collection("rooms").document(classroom_id).set({
-        "configured": True,
-        "updatedAt": time.time(),
-        "input_dim": input_dim  # ✅ VERY IMPORTANT (store this!)
-    }, merge=True)
 
     return {
         "message": "Model trained and converted to TFLite",

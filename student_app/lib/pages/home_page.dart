@@ -23,10 +23,10 @@ class _HomePageState extends State<HomePage> {
     courseController.fetchCourses();
     super.initState();
   }
-  
+
   @override
   void dispose() {
-    courseController.dispose();
+    // courseController.dispose();
     super.dispose();
   }
 
@@ -98,10 +98,15 @@ class _HomePageState extends State<HomePage> {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => JoinCoursePage()),
-        ),
+        onPressed: () =>
+            Navigator.push<bool>(
+              context,
+              MaterialPageRoute(builder: (context) => JoinCoursePage()),
+            ).then((success) {
+              if (success != null && success) {
+                courseController.fetchCourses();
+              }
+            }),
         label: const Text('Join Course'),
         icon: const Icon(Icons.add),
       ),

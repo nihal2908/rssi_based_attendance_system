@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -28,6 +30,7 @@ class CourseController extends ChangeNotifier {
   set currentSession(Session? session) {
     _currentSession = session;
     notifyListeners();
+    startSessionStream(session?.id);
   }
 
   bool _isLoading = false;
@@ -38,6 +41,38 @@ class CourseController extends ChangeNotifier {
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  StreamSubscription<DocumentSnapshot>? _sessionStreamSubscription;
+  final ChangeNotifier sessionChangeNotifier = ChangeNotifier();
+
+  void startSessionStream(String? sessionId) async {
+    _sessionStreamSubscription?.cancel();
+    if (sessionId != null) {
+      _sessionStreamSubscription = _firestore
+          .collection('sessions')
+          .doc(sessionId)
+          .snapshots()
+          .listen((snapshot) async {
+            print("Session document updated: ${snapshot.id}");
+            if (snapshot.exists) {
+              final updatedSession = snapshot.data() as Map<String, dynamic>;
+              if (_currentSession != null &&
+                  _currentSession!.id == updatedSession['id']) {
+                final attendeeIds = List<String>.from(
+                  updatedSession['attendees'] ?? [],
+                );
+                currentSession?.attendees = _currentCourse?.studentsEnrolled
+                    ?.where((student) => attendeeIds.contains(student.id))
+                    .toList();
+                _currentSession?.attendanceOpen =
+                    updatedSession['attendance_open'] ?? false;
+
+                sessionChangeNotifier.notifyListeners();
+              }
+            }
+          });
+    }
   }
 
   Future<void> fetchCourses() async {
@@ -101,7 +136,7 @@ class CourseController extends ChangeNotifier {
 
       final snapshot = await _firestore
           .collection('courses')
-          .where('code', isEqualTo: code)
+          .where('invite_code', isEqualTo: code)
           .limit(1)
           .get();
 
@@ -119,8 +154,28 @@ class CourseController extends ChangeNotifier {
 
       final courseId = snapshot.docs.first.id;
 
+      // check for student id already enrolled
+      final enrollmentDoc = await _firestore
+          .collection('course_enrollements')
+          .doc(courseId)
+          .get();
+
+      if (enrollmentDoc.exists) {
+        final enrolledStudents = List<String>.from(
+          enrollmentDoc['students_enrolled'] ?? [],
+        );
+        if (enrolledStudents.contains(userId)) {
+          _errorMessage = 'Already enrolled in this course';
+          return false;
+        }
+      }
+
       await _firestore.collection('course_enrollements').doc(courseId).update({
         'students_enrolled': FieldValue.arrayUnion([userId]),
+      });
+
+      await _firestore.collection('students').doc(userId).update({
+        'courses_enrolled': FieldValue.arrayUnion([courseId]),
       });
 
       return true;
@@ -275,6 +330,14 @@ class CourseController extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> getCompleteCourseDetails() async {
+    await Future.wait([
+      getCourseSchedule(),
+      getCourseMembers(),
+      getCourseSessions(),
+    ]);
   }
 
   Future<void> fetchSessionDetails(String id) async {

@@ -7,8 +7,9 @@ import '../dependency_injection.dart';
 import '../models/classroom.dart';
 
 class AttendanceActionPage extends StatefulWidget {
+  final String sessionId;
   final Classroom classroom;
-  const AttendanceActionPage({required this.classroom, super.key});
+  const AttendanceActionPage({required this.classroom, required this.sessionId, super.key});
 
   @override
   State<AttendanceActionPage> createState() => _AttendanceActionPageState();
@@ -71,7 +72,7 @@ class _AttendanceActionPageState extends State<AttendanceActionPage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _controller.startAttendanceVerification,
+                        onPressed: () => _controller.startAttendanceVerification(widget.sessionId),
                         child: const Text("Verify My Location"),
                       ),
                     ),

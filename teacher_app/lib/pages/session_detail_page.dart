@@ -70,14 +70,6 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
             ],
           ),
           body: children[_currentIndex],
-          floatingActionButton: _currentIndex == 1 && session.attendanceOpen
-              ? FloatingActionButton.extended(
-                  onPressed: () => _showManualMarkDialog(),
-                  label: const Text("Manual Mark"),
-                  icon: const Icon(Icons.edit),
-                  backgroundColor: Colors.blueAccent,
-                )
-              : null,
           bottomNavigationBar: BottomNavigationBar(
             currentIndex: _currentIndex,
             onTap: (index) => setState(() => _currentIndex = index),
@@ -100,10 +92,17 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       children: [
         // Time Card using your custom getters
         Card(
+          color: session.attendanceOpen ? Colors.green[100] : null,
           child: ListTile(
             leading: const Icon(Icons.access_time_filled, color: Colors.blue),
             title: const Text("Schedule"),
             subtitle: Text(session.formattedTimeRange),
+            trailing: session.attendanceOpen
+                ? const Badge(
+                    label: Text("LIVE"),
+                    backgroundColor: Colors.green,
+                  )
+                : null,
           ),
         ),
 
@@ -299,6 +298,4 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       ),
     );
   }
-
-  void _showManualMarkDialog() {}
 }

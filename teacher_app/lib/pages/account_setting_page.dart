@@ -83,12 +83,8 @@ class _AccountSettingPageState extends State<AccountSettingPage> {
           ),
           const SizedBox(height: 16),
           Text(
-            currentUser?.name ?? 'Student Name',
+            currentUser?.name ?? 'Teacher Name',
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          Text(
-            currentUser?.registrationNo ?? 'Reg No unavailable',
-            style: TextStyle(color: Colors.grey[600], fontSize: 16),
           ),
         ],
       ),
@@ -107,12 +103,6 @@ class _AccountSettingPageState extends State<AccountSettingPage> {
               leading: const Icon(Icons.email_outlined),
               title: const Text("Email Address"),
               subtitle: Text(user.email ?? 'Not set'),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.badge_outlined),
-              title: const Text("Registration Number"),
-              subtitle: Text(currentUser?.registrationNo ?? 'Not available'),
             ),
           ],
         ),

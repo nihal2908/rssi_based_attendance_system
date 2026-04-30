@@ -131,7 +131,7 @@ class _JoinCoursePageState extends State<JoinCoursePage> {
           content: Text("Successfully joined course!"),
         ),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, success);
     }
   }
 }

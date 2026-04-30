@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import 'controllers/auth_controller.dart';
 import 'dependency_injection.dart';
@@ -10,6 +11,7 @@ import 'pages/login_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await GoogleSignIn.instance.initialize();
   initSl();
   runApp(AdminApp());
 }
@@ -20,7 +22,7 @@ class AdminApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Admin App',
+      title: 'Attend: Student',
       theme: ThemeData(primarySwatch: Colors.blue),
       home: SplashScreen(),
       debugShowCheckedModeBanner: false,

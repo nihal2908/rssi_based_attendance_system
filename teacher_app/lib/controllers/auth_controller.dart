@@ -73,6 +73,28 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  Future<bool> loginWithGoogle() async {
+    _setLoading(true);
+    clearError();
+    try {
+      final user = await _authService.loginWithGoogle();
+      if (user == null) {
+        _errorMessage = 'Google Sign-In failed or was cancelled.';
+        return false;
+      }
+      _user = _authService.getCurrentUser();
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _errorMessage = e.message ?? 'Google Sign-In failed.';
+      return false;
+    } catch (e) {
+      _errorMessage = 'An unexpected error occurred.';
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
   Future<void> fetchUserData() async {
     if (_user == null || _currentUser != null) return;
 

@@ -10,6 +10,7 @@ import '../models/scheduled_session.dart';
 import '../models/session.dart';
 import '../models/student.dart';
 import '../models/teacher.dart';
+import '../utils/invite_code_generator.dart';
 import 'auth_controller.dart';
 
 class TeacherCourseController extends ChangeNotifier {
@@ -424,6 +425,9 @@ class TeacherCourseController extends ChangeNotifier {
       final authController = sl<AuthController>();
       final teacherId = authController.user?.uid;
 
+      // Generate a unique invite code for the course
+      final inviteCode = await _getUniqueInviteCode();
+
       // Generate a unique ID for the course
       final courseRef = _firestore.collection('courses').doc();
 
@@ -434,6 +438,7 @@ class TeacherCourseController extends ChangeNotifier {
         'id': courseRef.id,
         'name': name,
         'code': code.toUpperCase().trim(),
+        'invite_code': inviteCode,
         'teachers': [teacherId],
         'sessions': [],
         'scheduled_sessions': [],
@@ -462,6 +467,38 @@ class TeacherCourseController extends ChangeNotifier {
     }
   }
 
+  Future<String> _getUniqueInviteCode() async {
+    final firestore = FirebaseFirestore.instance;
+    bool isUnique = false;
+    String code = "";
+
+    while (!isUnique) {
+      code = InviteCodeGenerator.generate();
+
+      final codeDocRef = firestore.collection('invite_codes').doc(code);
+
+      try {
+        await firestore.runTransaction((transaction) async {
+          final snapshot = await transaction.get(codeDocRef);
+
+          if (snapshot.exists) {
+            throw Exception("Code Taken");
+          } else {
+            transaction.set(codeDocRef, {
+              'created_at': FieldValue.serverTimestamp(),
+              'status': 'active',
+            });
+            isUnique = true;
+          }
+        });
+      } catch (e) {
+        // print("Collision detected for $code, retrying...");
+      }
+    }
+
+    return code;
+  }
+
   Future<bool> joinCourse({required String code}) async {
     try {
       _isLoading = true;
@@ -470,7 +507,7 @@ class TeacherCourseController extends ChangeNotifier {
 
       final snapshot = await _firestore
           .collection('courses')
-          .where('code', isEqualTo: code)
+          .where('invite_code', isEqualTo: code)
           .limit(1)
           .get();
 
@@ -488,6 +525,15 @@ class TeacherCourseController extends ChangeNotifier {
 
       final courseId = snapshot.docs.first.id;
 
+      // check if teacher is already assigned to the course
+      final assignedTeachers = List<String>.from(
+        snapshot.docs.first['teachers'] ?? [],
+      );
+      if (assignedTeachers.contains(userId)) {
+        _errorMessage = 'You are already assigned to this course';
+        return false;
+      }
+
       await _firestore.collection('courses').doc(courseId).update({
         'teachers': FieldValue.arrayUnion([userId]),
       });
@@ -502,7 +548,7 @@ class TeacherCourseController extends ChangeNotifier {
       return false;
     } finally {
       _isLoading = false;
-      notifyListeners(); // This will catch all state changes at once
+      notifyListeners();
     }
   }
 

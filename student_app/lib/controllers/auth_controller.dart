@@ -44,6 +44,19 @@ class AuthController extends ChangeNotifier {
     try {
       await _authService.register(name, registrationNo, email, password);
       _user = _authService.getCurrentUser();
+
+      // write user data to Firestore
+      // await _firestore.collection('students').doc(_user!.uid).set({
+      //   'id': _user!.uid,
+      //   'name': name,
+      //   'registration_no': registrationNo,
+      //   'email': email,
+      //   'face_id_configured': false,
+      //   'face_id_request_id': null,
+      //   'avatar': null,
+      //   'courses_enrolled': [],
+      // });
+
       return true;
     } on FirebaseAuthException catch (e) {
       _errorMessage = e.message ?? 'Registration failed.';
@@ -65,6 +78,28 @@ class AuthController extends ChangeNotifier {
       return true;
     } on FirebaseAuthException catch (e) {
       _errorMessage = e.message ?? 'Login failed.';
+      return false;
+    } catch (e) {
+      _errorMessage = 'An unexpected error occurred.';
+      return false;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<bool> loginWithGoogle() async {
+    _setLoading(true);
+    clearError();
+    try {
+      final user = await _authService.loginWithGoogle();
+      if (user == null) {
+        _errorMessage = 'Google Sign-In failed or was cancelled.';
+        return false;
+      }
+      _user = _authService.getCurrentUser();
+      return true;
+    } on FirebaseAuthException catch (e) {
+      _errorMessage = e.message ?? 'Google Sign-In failed.';
       return false;
     } catch (e) {
       _errorMessage = 'An unexpected error occurred.';

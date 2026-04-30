@@ -30,6 +30,16 @@ class _RegisterPageState extends State<RegisterPage> {
     super.dispose();
   }
 
+  void _handleLoginSuccess() {
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const HomePage()),
+        (route) => false,
+      );
+    }
+  }
+
   void _onRegister() async {
     if (_formKey.currentState!.validate()) {
       FocusScope.of(context).unfocus();
@@ -40,32 +50,34 @@ class _RegisterPageState extends State<RegisterPage> {
         password: _passwordController.text.trim(),
       );
 
-      if (success && mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const HomePage()),
-          (route) => false,
-        );
+      if (success) {
+        _handleLoginSuccess();
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_auth.errorMessage ?? 'Registration failed'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
+        _showErrorSnackBar(_auth.errorMessage ?? 'Registration failed');
       }
     }
+  }
+
+  void _onGoogleLogin() async {
+    FocusScope.of(context).unfocus();
+    final success = await _auth.loginWithGoogle();
+    if (success) {
+      _handleLoginSuccess();
+    } else if (mounted && _auth.errorMessage != null) {
+      _showErrorSnackBar(_auth.errorMessage!);
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: const BackButton(color: Colors.black),
-      ),
       body: ListenableBuilder(
         listenable: _auth,
         builder: (context, _) {
@@ -86,7 +98,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Join the MNNIT student community today',
+                      'Register to get started with your digital classroom',
                       style: TextStyle(color: Colors.grey[600], fontSize: 16),
                     ),
                     const SizedBox(height: 32),
@@ -173,6 +185,50 @@ class _RegisterPageState extends State<RegisterPage> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // OR Divider
+                    Row(
+                      children: [
+                        Expanded(child: Divider(color: Colors.grey[300])),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'OR',
+                            style: TextStyle(color: Colors.grey[500]),
+                          ),
+                        ),
+                        Expanded(child: Divider(color: Colors.grey[300])),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Google Register Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: OutlinedButton.icon(
+                        onPressed: _auth.isLoading ? null : _onGoogleLogin,
+                        icon: Image.asset(
+                          'assets/images/google_logo.png',
+                          height: 24,
+                        ),
+                        label: const Text(
+                          'Continue with Google',
+                          style: TextStyle(
+                            color: Colors.black87,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          side: BorderSide(color: Colors.grey[300]!),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 24),

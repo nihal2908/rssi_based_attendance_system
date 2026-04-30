@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import '../controllers/teacher_course_controller.dart';
@@ -37,6 +36,7 @@ class _CourseSessionsPageState extends State<CourseSessionsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       body: Column(
         children: [
           _buildHeroHeader(),
@@ -47,18 +47,20 @@ class _CourseSessionsPageState extends State<CourseSessionsPage> {
                 if (courseController.isLoading) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (courseController.errorMessage != null) {
-                  return Center(child: Text(courseController.errorMessage!));
-                }
-                final sessions = courseController.currentCourse?.sessions ?? [];
-                if (sessions.isEmpty) {
-                  return const Center(child: Text("No history found."));
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: sessions.length,
-                  itemBuilder: (_, index) => _buildSessionCard(sessions[index]),
+                final sessions =
+                    widget.courseController.currentCourse?.sessions ?? [];
+                return RefreshIndicator(
+                  onRefresh: () => courseController.getCourseSessions(),
+                  child: courseController.errorMessage != null
+                      ? Center(child: Text(courseController.errorMessage!))
+                      : sessions.isEmpty
+                      ? const Center(child: Text("No history found."))
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: sessions.length,
+                          itemBuilder: (_, index) =>
+                              _buildSessionCard(sessions[index]),
+                        ),
                 );
               },
             ),
@@ -96,6 +98,10 @@ class _CourseSessionsPageState extends State<CourseSessionsPage> {
                 ),
                 Text(
                   course?.code ?? "",
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                Text(
+                  "Invite Code: ${course?.inviteCode}",
                   style: TextStyle(color: Colors.grey[600]),
                 ),
               ],

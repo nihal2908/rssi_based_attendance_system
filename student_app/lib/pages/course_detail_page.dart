@@ -79,17 +79,20 @@ class _CourseSessionsPageState extends State<CourseSessionsPage> {
               if (widget.courseController.isLoading) {
                 return const Center(child: CircularProgressIndicator());
               }
-
               final sessions =
                   widget.courseController.currentCourse?.sessions ?? [];
-              if (sessions.isEmpty) {
-                return const Center(child: Text("No history found."));
-              }
-
-              return ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: sessions.length,
-                itemBuilder: (_, index) => _buildSessionCard(sessions[index]),
+              return RefreshIndicator(
+                onRefresh: () => courseController.getCourseSessions(),
+                child: courseController.errorMessage != null
+                    ? Center(child: Text(courseController.errorMessage!))
+                    : sessions.isEmpty
+                    ? const Center(child: Text("No history found."))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: sessions.length,
+                        itemBuilder: (_, index) =>
+                            _buildSessionCard(sessions[index]),
+                      ),
               );
             },
           ),
@@ -164,6 +167,7 @@ class _CourseSessionsPageState extends State<CourseSessionsPage> {
             ? const Badge(label: Text("LIVE"), backgroundColor: Colors.green)
             : const Icon(Icons.chevron_right),
         onTap: () {
+          courseController.getCompleteCourseDetails();
           widget.courseController.currentSession = session;
           Navigator.push(
             context,
@@ -212,44 +216,51 @@ class _CourseMembersListState extends State<CourseMembersList> {
         if (courseController.isLoading) {
           return Center(child: CircularProgressIndicator());
         }
-        if (courseController.errorMessage != null) {
-          return Center(child: Text(courseController.errorMessage!));
-        }
         final course = courseController.currentCourse;
-        if (course == null) {
-          return Center(
-            child: Text('There was an error loading course details'),
-          );
-        }
-        final int totalItems =
-            1 + course.teachers!.length + 1 + course.studentsEnrolled!.length;
+        final int totalItems = course != null
+            ? 1 + course.teachers!.length + 1 + course.studentsEnrolled!.length
+            : 2;
 
-        return ListView.builder(
-          itemCount: totalItems,
-          itemBuilder: (context, index) {
-            // 1. Teacher Header
-            if (index == 0) {
-              return _buildHeader("Teachers (${course.teachers!.length})");
-            }
+        return RefreshIndicator(
+          onRefresh: () => courseController.getCourseSessions(),
+          child: courseController.errorMessage != null || course == null
+              ? Center(
+                  child: Text(
+                    courseController.errorMessage ??
+                        "There was an error loading course details",
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: totalItems,
+                  itemBuilder: (context, index) {
+                    // 1. Teacher Header
+                    if (index == 0) {
+                      return _buildHeader(
+                        "Teachers (${course.teachers!.length})",
+                      );
+                    }
 
-            // 2. Teacher List
-            if (index <= course.teachers!.length) {
-              return _buildMemberTile(teacher: course.teachers![index - 1]);
-            }
+                    // 2. Teacher List
+                    if (index <= course.teachers!.length) {
+                      return _buildMemberTile(
+                        teacher: course.teachers![index - 1],
+                      );
+                    }
 
-            // 3. Student Header
-            if (index == course.teachers!.length + 1) {
-              return _buildHeader(
-                "Students (${course.studentsEnrolled!.length})",
-              );
-            }
+                    // 3. Student Header
+                    if (index == course.teachers!.length + 1) {
+                      return _buildHeader(
+                        "Students (${course.studentsEnrolled!.length})",
+                      );
+                    }
 
-            // 4. Student List
-            final studentIndex = index - (course.teachers!.length + 2);
-            return _buildMemberTile(
-              student: course.studentsEnrolled![studentIndex],
-            );
-          },
+                    // 4. Student List
+                    final studentIndex = index - (course.teachers!.length + 2);
+                    return _buildMemberTile(
+                      student: course.studentsEnrolled![studentIndex],
+                    );
+                  },
+                ),
         );
       },
     );
@@ -313,45 +324,55 @@ class _CourseCalendarPageState extends State<CourseCalendarPage> {
       body: ListenableBuilder(
         listenable: courseController,
         builder: (context, _) {
+          if (courseController.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final sessions =
               courseController.currentCourse?.scheduledSessions ?? [];
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: sessions.length,
-            itemBuilder: (_, index) {
-              final s = sessions[index];
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: Row(
-                  children: [
-                    _buildDayIndicator(s.weekdayString),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          s.fullTimeRange,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+          return RefreshIndicator(
+            onRefresh: () => courseController.getCourseSchedule(),
+            child: courseController.errorMessage != null
+                ? Center(child: Text(courseController.errorMessage!))
+                : sessions.isEmpty
+                ? const Center(child: Text("No schedule found."))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: sessions.length,
+                    itemBuilder: (_, index) {
+                      final s = sessions[index];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[200]!),
                         ),
-                        Text(
-                          "Room: ${s.classroomName}",
-                          style: TextStyle(color: Colors.grey[600]),
+                        child: Row(
+                          children: [
+                            _buildDayIndicator(s.weekdayString),
+                            const SizedBox(width: 16),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  s.fullTimeRange,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Text(
+                                  "Room: ${s.classroomName}",
+                                  style: TextStyle(color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
+                      );
+                    },
+                  ),
           );
         },
       ),

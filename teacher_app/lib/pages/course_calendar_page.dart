@@ -38,51 +38,52 @@ class _CourseCalendarPageState extends State<CourseCalendarPage> {
           if (courseController.isLoading) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (courseController.errorMessage != null) {
-            return Center(child: Text(courseController.errorMessage!));
-          }
           final sessions =
               courseController.currentCourse?.scheduledSessions ?? [];
-          if (sessions.isEmpty) {
-            return const Center(child: Text("No schedules added yet."));
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: sessions.length,
-            itemBuilder: (_, index) {
-              final s = sessions[index];
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[200]!),
-                ),
-                child: Row(
-                  children: [
-                    _buildDayIndicator(s.weekdayString),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          s.fullTimeRange,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+          return RefreshIndicator(
+            onRefresh: () => courseController.getCourseSchedule(),
+            child: courseController.errorMessage != null
+                ? Center(child: Text(courseController.errorMessage!))
+                : sessions.isEmpty
+                ? const Center(child: Text("No schedule found."))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: sessions.length,
+                    itemBuilder: (_, index) {
+                      final s = sessions[index];
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[200]!),
                         ),
-                        Text(
-                          "Room: ${s.classroomName}",
-                          style: TextStyle(color: Colors.grey[600]),
+                        child: Row(
+                          children: [
+                            _buildDayIndicator(s.weekdayString),
+                            const SizedBox(width: 16),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  s.fullTimeRange,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                Text(
+                                  "Room: ${s.classroomName}",
+                                  style: TextStyle(color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-              );
-            },
+                      );
+                    },
+                  ),
           );
         },
       ),
