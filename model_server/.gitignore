@@ -34,4 +34,4 @@ secrets.json
 .idea/
 
 # Trained Models
-models
+models/
